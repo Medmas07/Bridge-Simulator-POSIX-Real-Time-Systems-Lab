@@ -1,10 +1,72 @@
 #include "events.h"
+
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
-static EventNode *head, *tail; static pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER; static unsigned long sequence;
-void events_init(void) { pthread_mutex_lock(&mutex); head=tail=0; sequence=0; pthread_mutex_unlock(&mutex); }
-void events_push(const char *type, int id, VehicleType vehicle, int weight, const char *message) { EventNode *n=calloc(1,sizeof(*n)); const char *kind=vehicle==VEHICLE_TRUCK?"TRUCK":"CAR"; pthread_mutex_lock(&mutex); snprintf(n->json,sizeof(n->json),"{\"type\":\"%s\",\"sequence\":%lu,\"id\":%d,\"vehicleType\":\"%s\",\"weight\":%d,\"message\":\"%s\"}",type,++sequence,id,kind,weight,message?message:""); if(tail) tail->next=n; else head=n; tail=n; pthread_mutex_unlock(&mutex); }
-int events_pop(char *out,int size) { pthread_mutex_lock(&mutex); if(!head){pthread_mutex_unlock(&mutex);return 0;} EventNode *n=head; head=n->next; if(!head)tail=0; pthread_mutex_unlock(&mutex); strncpy(out,n->json,(size_t)size-1); out[size-1]=0; free(n); return 1; }
-void events_clear(void) { char x[512]; while(events_pop(x,sizeof(x))); }
+
+static EventNode *head;
+static EventNode *tail;
+static pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+static unsigned long sequence;
+
+void events_init(void) {
+    pthread_mutex_lock(&queue_mutex);
+    head = NULL;
+    tail = NULL;
+    sequence = 0;
+    pthread_mutex_unlock(&queue_mutex);
+}
+
+void events_push_raw(const char *json) {
+    EventNode *node = calloc(1, sizeof(*node));
+    if (!node) return;
+    snprintf(node->json, sizeof(node->json), "%s", json);
+    pthread_mutex_lock(&queue_mutex);
+    if (tail) tail->next = node;
+    else head = node;
+    tail = node;
+    pthread_mutex_unlock(&queue_mutex);
+}
+
+void events_emit(unsigned generation, const char *type, const char *fields_json) {
+    EventNode *node = calloc(1, sizeof(*node));
+    if (!node) return;
+    pthread_mutex_lock(&queue_mutex);
+    sequence++;
+    snprintf(node->json, sizeof(node->json),
+             "{\"type\":\"%s\",\"sequence\":%lu,\"generation\":%u%s%s}",
+             type, sequence, generation,
+             fields_json && fields_json[0] ? "," : "",
+             fields_json && fields_json[0] ? fields_json : "");
+    if (tail) tail->next = node;
+    else head = node;
+    tail = node;
+    pthread_mutex_unlock(&queue_mutex);
+}
+
+int events_pop(char *output, size_t output_size) {
+    EventNode *node;
+    pthread_mutex_lock(&queue_mutex);
+    node = head;
+    if (!node) {
+        pthread_mutex_unlock(&queue_mutex);
+        return 0;
+    }
+    head = node->next;
+    if (!head) tail = NULL;
+    pthread_mutex_unlock(&queue_mutex);
+    snprintf(output, output_size, "%s", node->json);
+    free(node);
+    return 1;
+}
+
+void events_clear(void) {
+    char ignored[8192];
+    while (events_pop(ignored, sizeof(ignored))) { }
+}
+
+void events_destroy(void) {
+    events_clear();
+    pthread_mutex_destroy(&queue_mutex);
+}

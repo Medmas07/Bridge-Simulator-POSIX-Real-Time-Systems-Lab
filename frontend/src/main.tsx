@@ -1,114 +1,109 @@
-import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BridgeScene, type SceneVehicle } from './components/scene/BridgeScene';
+import { BridgeScene } from './components/scene/BridgeScene';
+import { useSimulation } from './hooks/useSimulation';
+import {
+  SCENARIO_LABELS,
+  SCENARIO_PROBLEMS,
+  SCENARIOS,
+  SIMULATION_SPEEDS,
+  type ScenarioName,
+  type SimulationSpeed,
+} from './simulationConfig';
 import './style.css';
-
-type SimulationEvent = {
-  type: string;
-  id?: number;
-  vehicleType?: string;
-  weight?: number;
-  message?: string;
-};
+import './enhancements.css';
 
 function App() {
-  const [events, setEvents] = useState<SimulationEvent[]>([]);
-  const [weight, setWeight] = useState(0);
-  const [vehicles, setVehicles] = useState<SceneVehicle[]>([]);
-  const [scenario, setScenario] = useState('NORMAL');
-  const [demoId, setDemoId] = useState(1);
-  const [connected, setConnected] = useState(false);
-  const ws = useMemo(() => {
-    try { return new WebSocket('ws://localhost:8080'); }
-    catch { return null; }
-  }, []);
-
-  function updateVehicle(id: number, state: string) {
-    setVehicles(current => current.map(vehicle => vehicle.id === id ? { ...vehicle, state } : vehicle));
-  }
-
-  function applyEvent(event: SimulationEvent) {
-    setEvents(current => [event, ...current].slice(0, 24));
-    if (event.type === 'BRIDGE_WEIGHT_CHANGED') setWeight(event.weight || 0);
-    if (event.type === 'VEHICLE_CREATED') {
-      setVehicles(current => [...current, { id: event.id || 0, vehicleType: event.vehicleType || 'CAR', state: 'ARRIVING' }]);
-    }
-    if (event.id && event.type === 'VEHICLE_WAITING') updateVehicle(event.id, 'WAITING');
-    if (event.id && event.type === 'VEHICLE_ENTERED') updateVehicle(event.id, 'CROSSING');
-    if (event.id && event.type === 'VEHICLE_EXITED') {
-      updateVehicle(event.id, 'EXITING');
-      window.setTimeout(() => setVehicles(current => current.filter(vehicle => vehicle.id !== event.id)), 2600);
-    }
-  }
-
-  useEffect(() => {
-    if (!ws) return;
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => setConnected(false);
-    ws.onmessage = message => {
-      try { applyEvent(JSON.parse(message.data)); }
-      catch { /* Le frontend ignore les messages qui ne sont pas du JSON valide. */ }
-    };
-    return () => ws.close();
-  }, [ws]);
-
-  function send(command: string) {
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ command }));
-      return;
-    }
-    const vehicleType = command.includes('TRUCK') ? 'TRUCK' : 'CAR';
-    const id = demoId;
-    const vehicleWeight = vehicleType === 'TRUCK' ? 15 : 5;
-    setDemoId(id + 1);
-    applyEvent({ type: 'VEHICLE_CREATED', id, vehicleType, message: 'Thread créé en mode démo' });
-    window.setTimeout(() => applyEvent({ type: 'VEHICLE_WAITING', id, vehicleType, message: 'En attente devant la barrière' }), 700);
-    window.setTimeout(() => {
-      applyEvent({ type: 'VEHICLE_ENTERED', id, vehicleType, message: 'Véhicule admis' });
-      setWeight(current => Math.min(15, current + vehicleWeight));
-    }, 1500);
-    window.setTimeout(() => {
-      applyEvent({ type: 'VEHICLE_EXITED', id, vehicleType, message: 'Véhicule sorti' });
-      setWeight(current => Math.max(0, current - vehicleWeight));
-    }, 5200);
-  }
-
-  function reset() {
-    setVehicles([]);
-    setWeight(0);
-    setEvents([]);
-    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ command: 'RESET' }));
-  }
-
-  function selectScenario(name: string) {
-    setScenario(name);
-    applyEvent({ type: 'SCENARIO_STARTED', message: `Scénario : ${name}` });
-    if (name === 'RACE CONDITION') setWeight(20);
-  }
+  const { state, createVehicle, startScenario, replay, reset, pause, resume, setSpeed } = useSimulation();
+  const waitingVehicles = state.vehicles.filter(vehicle => vehicle.state === 'WAITING');
+  const crossingVehicles = state.vehicles.filter(vehicle => vehicle.state === 'CROSSING');
+  const controlsDisabled = !state.connected || state.transitioning || state.simulationState === 'STOPPING';
 
   return (
     <main>
       <header>
-        <div><span className="eyebrow">STR / POSIX LAB</span><h1>Bridge <i>Simulator</i></h1><p>Simulateur 3D de concurrence sur un pont à capacité limitée.</p></div>
-        <div className="status"><span className="dot" />{connected ? 'BACKEND CONNECTÉ' : 'MODE DÉMO'}</div>
+        <div>
+          <span className="eyebrow">STR / POSIX LAB</span>
+          <h1>Bridge <i>Simulator</i></h1>
+          <p>Simulateur 3D piloté par de véritables threads POSIX.</p>
+        </div>
+        <div className={`status ${state.connected ? '' : 'offline'}`}><span className="dot" />{state.connected ? 'BACKEND CONNECTÉ' : 'BACKEND DÉCONNECTÉ'}</div>
       </header>
+
       <div className="toolbar">
-        <button onClick={() => send('CREATE_VEHICLE CAR')}>+ Voiture</button>
-        <button className="orange" onClick={() => send('CREATE_VEHICLE TRUCK')}>+ Camion</button>
-        <button className="quiet" onClick={reset}>Réinitialiser</button>
-        <label>Vitesse <select defaultValue="1"><option value="1">1x</option><option value="0.5">0.5x</option><option value="2">2x</option></select></label>
+        <button disabled={controlsDisabled || state.scenario !== 'NORMAL'} onClick={() => createVehicle('CAR')}>+ Voiture</button>
+        <button disabled={controlsDisabled || state.scenario !== 'NORMAL'} className="orange" onClick={() => createVehicle('TRUCK')}>+ Camion</button>
+        {state.simulationState === 'PAUSED'
+          ? <button disabled={controlsDisabled} onClick={resume}>Reprendre</button>
+          : <button disabled={controlsDisabled || state.simulationState !== 'RUNNING'} onClick={pause}>Pause</button>}
+        <button disabled={controlsDisabled} onClick={replay}>Rejouer</button>
+        <button disabled={!state.connected} className="quiet" onClick={reset}>Réinitialiser</button>
+        <label>Vitesse
+          <select value={state.speed} disabled={controlsDisabled} onChange={event => setSpeed(Number(event.target.value) as SimulationSpeed)}>
+            {SIMULATION_SPEEDS.map(speed => <option key={speed} value={speed}>{speed}x</option>)}
+          </select>
+        </label>
       </div>
+
+      {state.error && <div className="error-banner">{state.error}</div>}
+
       <div className="layout">
-        <section className="scene">
-          <BridgeScene vehicles={vehicles} weight={weight} />
-          <div className="weight"><small>POIDS ACTUEL</small><strong>{weight} <em>/ 15 T</em></strong><div className="bar"><span style={{ width: `${Math.min(weight / 15 * 100, 100)}%`, background: weight > 15 ? '#eb5757' : weight === 15 ? '#f2994a' : '#55d98a' }} /></div></div>
+        <section className={`scene ${state.collapsed ? 'danger' : ''}`}>
+          <BridgeScene vehicles={state.vehicles} weight={state.weight} speed={state.simulationState === 'PAUSED' ? 0 : state.speed} collapsed={state.collapsed} />
+          <div className="weight">
+            <small>POIDS ACTUEL · BACKEND</small>
+            <strong>{state.weight} <em>/ 15 T</em></strong>
+            <div className="bar"><span style={{ width: `${Math.min(state.weight / 15 * 100, 100)}%`, background: state.weight > 15 ? '#eb5757' : state.weight === 15 ? '#f2994a' : '#55d98a' }} /></div>
+          </div>
           <div className="direction">ENTRÉE <span>→</span> PONT <span>→</span> SORTIE</div>
         </section>
+
         <aside>
-          <div className="card"><div className="cardtitle">MONITEUR <span className="live">● ACTIF</span></div><div className="metrics"><div><b>{vehicles.length}</b><small>THREADS</small></div><div><b>{vehicles.filter(vehicle => vehicle.state === 'WAITING').length}</b><small>EN ATTENTE</small></div><div><b>OK</b><small>ÉTAT</small></div></div></div>
-          <div className="card"><div className="cardtitle">SCÉNARIOS DE CONCURRENCE</div><div className="scenarios">{['NORMAL', 'RACE CONDITION', 'FAMINE / STARVATION', 'DEADLOCK', 'BUSY WAITING', 'PRIORITY INVERSION'].map((name, index) => <button className={scenario === name ? 'selected' : ''} onClick={() => selectScenario(name)} key={name}><span>0{index + 1}</span>{name}</button>)}</div></div>
-          <div className="card queues"><div className="cardtitle">FILES DU MONITEUR</div><p>ARRIVÉE <span>{vehicles.map(vehicle => `${vehicle.vehicleType === 'TRUCK' ? 'C' : 'V'}${vehicle.id}`).join(' → ') || '—'}</span></p><p>PASSAGE <span className="accent">{vehicles.filter(vehicle => vehicle.state === 'CROSSING').map(vehicle => `${vehicle.vehicleType === 'TRUCK' ? 'C' : 'V'}${vehicle.id}`).join(' → ') || '—'}</span></p></div>
-          <div className="card log"><div className="cardtitle">JOURNAL DES ÉVÉNEMENTS</div>{events.slice(0, 6).map((event, index) => <p key={`${event.type}-${index}`}><time>{new Date().toLocaleTimeString('fr-FR')}</time> <b>{event.type}</b> {event.message}</p>)}</div>
+          <div className="card">
+            <div className="cardtitle">SIMULATION <span className={`state-pill state-${state.simulationState.toLowerCase()}`}>{state.simulationState}</span></div>
+            <div className="metrics">
+              <div><b>{state.activeThreads}</b><small>THREADS RÉELS</small></div>
+              <div><b>{state.waitingCars + state.waitingTrucks}</b><small>EN ATTENTE</small></div>
+              <div><b>G{state.generation}</b><small>GÉNÉRATION</small></div>
+            </div>
+          </div>
+
+          <div className="card lesson">
+            <div className="cardtitle">SCÉNARIO ACTIF</div>
+            <h2>{SCENARIO_LABELS[state.scenario]}</h2>
+            <p>{SCENARIO_PROBLEMS[state.scenario]}</p>
+            <dl><dt>ÉTAPE</dt><dd>{state.currentStep}</dd><dt>ÉVÉNEMENT POSIX</dt><dd>{state.posixEvent}</dd><dt>EXPLICATION</dt><dd>{state.explanation}</dd></dl>
+          </div>
+
+          <div className="card monitor-card">
+            <div className="cardtitle">DIAGNOSTIC DU MONITEUR</div>
+            <div className="monitor-row"><span>MUTEX</span><b>{state.monitorState}</b></div>
+            <div className="monitor-row"><span>CAPACITÉ</span><b>{state.weight} / 15 T</b></div>
+            <small>Le mutex protège les données ; la barrière représente l’autorisation physique.</small>
+          </div>
+
+          <div className="card">
+            <div className="cardtitle">SCÉNARIOS DE CONCURRENCE</div>
+            <div className="scenarios">
+              {SCENARIOS.map((scenario, index) => (
+                <button disabled={controlsDisabled} className={state.scenario === scenario ? 'selected' : ''} onClick={() => startScenario(scenario)} key={scenario}>
+                  <span>0{index + 1}</span>{SCENARIO_LABELS[scenario]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card queues">
+            <div className="cardtitle">FILES RÉELLES DU BACKEND</div>
+            <p>ATTENTE <span>{waitingVehicles.map(vehicle => `${vehicle.vehicleType === 'TRUCK' ? 'C' : 'V'}${vehicle.id}`).join(' → ') || '—'}</span></p>
+            <p>TRAVERSÉE <span className="accent">{crossingVehicles.map(vehicle => `${vehicle.vehicleType === 'TRUCK' ? 'C' : 'V'}${vehicle.id}`).join(' + ') || '—'}</span></p>
+          </div>
+
+          <div className="card log">
+            <div className="cardtitle">TIMELINE DES ÉVÉNEMENTS</div>
+            {state.events.slice(0, 12).map((event, index) => (
+              <p key={`${event.generation}-${event.sequence}-${index}`}><time>#{event.sequence || '—'}</time> <b>{event.type}</b> {event.message || event.action || event.step}</p>
+            ))}
+          </div>
         </aside>
       </div>
     </main>

@@ -1,6 +1,18 @@
 #ifndef EVENTS_H
 #define EVENTS_H
-#include "bridge.h"
-typedef struct EventNode { char json[512]; struct EventNode *next; } EventNode;
-void events_init(void); void events_push(const char *type, int id, VehicleType vehicle, int weight, const char *message); int events_pop(char *out, int size); void events_clear(void);
+
+#include <stddef.h>
+
+typedef struct EventNode {
+    char json[8192];
+    struct EventNode *next;
+} EventNode;
+
+void events_init(void);
+void events_destroy(void);
+void events_clear(void);
+void events_push_raw(const char *json);
+void events_emit(unsigned generation, const char *type, const char *fields_json);
+int events_pop(char *output, size_t output_size);
+
 #endif

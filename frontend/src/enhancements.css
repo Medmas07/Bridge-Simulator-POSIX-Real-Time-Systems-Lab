@@ -1,0 +1,11 @@
+button:disabled,select:disabled{cursor:not-allowed;opacity:.42}
+.status.offline{color:#ef776f}.status.offline .dot{background:#ef6158}
+.error-banner{margin:0 0 12px;padding:11px 14px;border:1px solid #b94a44;border-radius:7px;background:#4a201fe8;color:#ffb7b0;font:11px 'DM Mono'}
+.scene.danger{animation:dangerPulse .5s linear infinite}
+.vehicle-label{display:block;padding:4px 7px;border:1px solid #f4c35f;border-radius:4px;background:#171b18e8;color:#ffe494;font:9px 'DM Mono';white-space:nowrap}
+.state-pill{float:right;padding:2px 6px;border:1px solid #566553;border-radius:9px;font-size:8px;color:#cbd5c7}
+.state-running{border-color:#63c879;color:#78e391}.state-paused{border-color:#d99c45;color:#ffc769}.state-error{border-color:#db5a53;color:#ff7d74}
+.lesson h2{margin:0 0 6px;color:#b8ef80;font-size:17px}.lesson>p{margin:0 0 12px;color:#9aa797;font-size:11px;line-height:1.45}
+.lesson dl{margin:0;display:grid;grid-template-columns:92px 1fr;gap:6px 8px}.lesson dt{color:#6f7e6d;font:8px 'DM Mono'}.lesson dd{margin:0;color:#d9e2d5;font:9px 'DM Mono';line-height:1.35}
+.monitor-card{border-color:#485943}.monitor-row{display:flex;justify-content:space-between;margin:7px 0;font:9px 'DM Mono'}.monitor-row span{color:#7e8c7b}.monitor-row b{color:#cde7be}.monitor-card>small{display:block;margin-top:9px;color:#7f8b7d;font-size:9px;line-height:1.4}
+@keyframes dangerPulse{0%,100%{box-shadow:0 0 0 #e94c4500}50%{box-shadow:0 0 28px #e94c4588}}

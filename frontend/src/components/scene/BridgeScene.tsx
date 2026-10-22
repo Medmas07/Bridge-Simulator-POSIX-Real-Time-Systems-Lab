@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, OrthographicCamera, Text } from '@react-three/drei';
+import { Html, OrbitControls, OrthographicCamera, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   BARRIER_Z,
@@ -24,6 +24,7 @@ import {
   WORLD_WIDTH,
   validateSceneConfig,
 } from '../../sceneConfig';
+import { APPEARANCE_SECONDS, APPROACH_SECONDS, CROSSING_SECONDS, EXIT_SECONDS } from '../../simulationConfig';
 
 export type SceneVehicle = {
   id: number;
@@ -104,12 +105,20 @@ function Road() {
   );
 }
 
-function Bridge() {
+function Bridge({ collapsed }: { collapsed: boolean }) {
+  const bridge = useRef<THREE.Group>(null);
+  useFrame((_, delta) => {
+    if (!bridge.current) return;
+    const targetY = collapsed ? -1.7 : 0;
+    const targetRotation = collapsed ? 0.16 : 0;
+    bridge.current.position.y = THREE.MathUtils.damp(bridge.current.position.y, targetY, 2.4, delta);
+    bridge.current.rotation.z = THREE.MathUtils.damp(bridge.current.rotation.z, targetRotation, 2.4, delta);
+  });
   const plankCount = 14;
   const plankDepth = BRIDGE_LENGTH / plankCount;
   const posts = [-BRIDGE_HALF_LENGTH + 0.35, -0.95, 0.95, BRIDGE_HALF_LENGTH - 0.35];
   return (
-    <group>
+    <group ref={bridge}>
       <Block position={[0, ROAD_TOP_Y - 0.16, 0]} size={[BRIDGE_WIDTH, 0.32, BRIDGE_LENGTH]} color="#955e32" />
       {Array.from({ length: plankCount }, (_, index) => {
         const z = -BRIDGE_HALF_LENGTH + plankDepth / 2 + index * plankDepth;
@@ -194,26 +203,46 @@ function VehicleModel({ truck, color }: { truck: boolean; color: string }) {
   );
 }
 
-function Vehicle3D({ vehicle, queueIndex }: { vehicle: SceneVehicle; queueIndex: number }) {
+function Vehicle3D({ vehicle, queueIndex, speed }: { vehicle: SceneVehicle; queueIndex: number; speed: number }) {
   const group = useRef<THREE.Group>(null);
+  const visualScale = useRef(0.01);
   const lane = LANE_CENTERS[vehicle.id % 2];
   const truck = vehicle.vehicleType === 'TRUCK';
   const waitingZ = WAITING_LINE_Z + queueIndex * QUEUE_GAP;
-  const initialZ = Math.min(ENTRY_Z - 0.9, waitingZ + 2.8);
+  const initialZ = ENTRY_Z - 0.9;
   const positionZ = useRef(initialZ);
-  const crossing = vehicle.state === 'CROSSING' || vehicle.state === 'EXITING';
   useFrame((_, delta) => {
     if (!group.current) return;
-    const targetZ = crossing ? EXIT_Z - 1 : waitingZ;
-    const speed = crossing ? 3.1 : 2.2;
-    positionZ.current = Math.max(targetZ, positionZ.current - delta * speed);
+    if (vehicle.state === 'APPEARING') {
+      visualScale.current = Math.min(1, visualScale.current + delta / APPEARANCE_SECONDS);
+    } else visualScale.current = 1;
+    let targetZ = positionZ.current;
+    let unitsPerSecond = 0;
+    if (vehicle.state === 'ARRIVING') {
+      targetZ = waitingZ;
+      unitsPerSecond = (ENTRY_Z - WAITING_LINE_Z) / APPROACH_SECONDS;
+    } else if (vehicle.state === 'WAITING') {
+      targetZ = waitingZ;
+      unitsPerSecond = 1.2;
+    } else if (vehicle.state === 'CROSSING') {
+      targetZ = -BRIDGE_HALF_LENGTH - 0.9;
+      unitsPerSecond = (WAITING_LINE_Z + BRIDGE_HALF_LENGTH + 0.9) / CROSSING_SECONDS;
+    } else if (vehicle.state === 'EXITING') {
+      targetZ = EXIT_Z - 1;
+      unitsPerSecond = (Math.abs(EXIT_Z) - BRIDGE_HALF_LENGTH) / EXIT_SECONDS;
+    }
+    positionZ.current = Math.max(targetZ, positionZ.current - delta * unitsPerSecond * speed);
     group.current.position.set(lane, ROAD_TOP_Y, positionZ.current);
+    group.current.scale.setScalar(visualScale.current);
   });
   const colors = ['#f3c529', '#eb493e', '#2c8aed', '#22ae4d'];
-  return <group ref={group} position={[lane, ROAD_TOP_Y, initialZ]}><VehicleModel truck={truck} color={truck ? '#2784df' : colors[vehicle.id % colors.length]} /></group>;
+  return <group ref={group} position={[lane, ROAD_TOP_Y, initialZ]}>
+    <VehicleModel truck={truck} color={truck ? '#2784df' : colors[vehicle.id % colors.length]} />
+    {vehicle.state === 'WAITING' && <Html position={[0, 1.35, 0]} center><span className="vehicle-label">WAITING · {vehicle.vehicleType === 'TRUCK' ? 'C' : 'V'}{vehicle.id}</span></Html>}
+  </group>;
 }
 
-export function BridgeScene({ vehicles, weight }: { vehicles: SceneVehicle[]; weight: number }) {
+export function BridgeScene({ vehicles, weight, speed, collapsed }: { vehicles: SceneVehicle[]; weight: number; speed: number; collapsed: boolean }) {
   return (
     <Canvas shadows>
       <OrthographicCamera
@@ -227,8 +256,8 @@ export function BridgeScene({ vehicles, weight }: { vehicles: SceneVehicle[]; we
       <color attach="background" args={['#85dc4b']} />
       <ambientLight intensity={1.65} />
       <directionalLight castShadow position={[-7, 15, 11]} intensity={2.2} shadow-mapSize={[2048, 2048]} />
-      <Terrain /><River /><Road /><Bridge /><Barrier open={weight > 0} /><WeightSign weight={weight} /><Scenery />
-      {vehicles.map((vehicle, index) => <Vehicle3D key={vehicle.id} vehicle={vehicle} queueIndex={Math.floor(index / 2)} />)}
+      <Terrain /><River /><Road /><Bridge collapsed={collapsed} /><Barrier open={vehicles.some(vehicle => vehicle.state === 'CROSSING')} /><WeightSign weight={weight} /><Scenery />
+      {vehicles.map((vehicle, index) => <Vehicle3D key={vehicle.id} vehicle={vehicle} queueIndex={Math.floor(index / 2)} speed={speed} />)}
       <OrbitControls enablePan={false} minZoom={34} maxZoom={56} minPolarAngle={0.65} maxPolarAngle={1.05} target={[0, 0, 0.7]} />
     </Canvas>
   );
