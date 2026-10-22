@@ -10,8 +10,9 @@ Bridge Simulator models a bridge with limited capacity. The C/POSIX backend make
 
 The scene includes the bridge, river, two lanes, barrier, vehicle queues and a teaching dashboard. Specialized panels make thread states and resource dependencies visible for abstract concurrency scenarios.
 
-> Screenshot placeholder: `docs/images/bridge-simulator.png`.
-> No matching screenshot currently exists in the repository.
+![Bridge Simulator interface](docs/images/bridge-simulator.png)
+
+The screenshot shows the low-poly bridge scene, the river, waiting vehicles, the barrier, simulation controls and the backend-driven dashboard.
 
 ## TP1 context
 
