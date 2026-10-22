@@ -1,5 +1,118 @@
-import React,{useEffect,useMemo,useState} from 'react'; import {createRoot} from 'react-dom/client'; import {Canvas,useFrame} from '@react-three/fiber'; import {OrbitControls,Text} from '@react-three/drei'; import * as THREE from 'three'; import './style.css';
-type Vehicle={id:number;vehicleType:string;state:string}; type Event={type:string;id?:number;vehicleType?:string;weight?:number;message?:string};
-function River(){return <mesh rotation-x={-Math.PI/2} position={[0,-.35,0]}><planeGeometry args={[18,8]}/><meshStandardMaterial color="#2d9cdb"/></mesh>}; function Bridge(){return <group><mesh position={[0,0,0]}><boxGeometry args={[5,.35,3]}/><meshStandardMaterial color="#a86e3d"/></mesh>{[-1.5,-.5,.5,1.5].map(x=><mesh key={x} position={[x,.2,0]}><boxGeometry args={[.1,.08,3.2]}/><meshStandardMaterial color="#f2c078"/></mesh>)}</group>}; function Vehicle3D({v,index}:{v:Vehicle;index:number}){const ref=React.useRef<THREE.Mesh>(null); useFrame((_,d)=>{if(ref.current){ref.current.position.x+=d*.45; ref.current.position.z=Math.sin(index)*.7}}); return <mesh ref={ref} position={[-5, .35, (index%2-0.5)*1.1]}><boxGeometry args={[.8,.45, .55]}/><meshStandardMaterial color={v.vehicleType==='TRUCK'?'#ef7d32':'#f7d154'}/></mesh>};
-function Scene({vehicles}:{vehicles:Vehicle[]}){return <Canvas camera={{position:[8,8,9],fov:45}} shadows><ambientLight intensity={1.5}/><directionalLight position={[3,8,5]} castShadow/><River/><mesh rotation-x={-Math.PI/2} position={[0,-.3,3]}><planeGeometry args={[18,3]}/><meshStandardMaterial color="#313844"/></mesh><Bridge/>{vehicles.map((v,i)=><Vehicle3D key={v.id} v={v} index={i}/>)}<Text position={[0,2.2,0]} rotation={[0,0,0]} fontSize={.3} color="white">POIDS DU PONT</Text><OrbitControls enablePan={false} minDistance={7} maxDistance={15}/></Canvas>}
-function App(){const [events,setEvents]=useState<Event[]>([]);const [weight,setWeight]=useState(0);const [vehicles,setVehicles]=useState<Vehicle[]>([]);const [scenario,setScenario]=useState('NORMAL');const [demoId,setDemoId]=useState(1);const ws=useMemo(()=>{try{return new WebSocket('ws://localhost:8080')}catch{return null}},[]); const apply=(ev:Event)=>{setEvents(x=>[ev,...x].slice(0,24));if(ev.type==='BRIDGE_WEIGHT_CHANGED')setWeight(ev.weight||0);if(ev.type==='VEHICLE_CREATED')setVehicles(x=>[...x,{id:ev.id||0,vehicleType:ev.vehicleType||'CAR',state:'CREATED'}]);if(ev.type==='VEHICLE_EXITED')setVehicles(x=>x.filter(v=>v.id!==ev.id))}; useEffect(()=>{if(!ws)return;ws.onmessage=e=>{try{apply(JSON.parse(e.data) as Event)}catch{}};return()=>ws.close()},[ws]); const send=(s:string)=>{if(ws?.readyState===1){ws.send(JSON.stringify({command:s}));return}const type=s.includes('TRUCK')?'TRUCK':'CAR';const id=demoId;setDemoId(id+1);const w=type==='TRUCK'?15:5;apply({type:'VEHICLE_CREATED',id,vehicleType:type,message:'Thread POSIX simulé en mode démonstration'});apply({type:'VEHICLE_WAITING',id,vehicleType:type,message:'Demande d’accès'});setTimeout(()=>{apply({type:'VEHICLE_ENTERED',id,vehicleType:type,weight:w,message:'Véhicule admis'});setWeight(x=>Math.min(15,x+w));setTimeout(()=>{apply({type:'VEHICLE_EXITED',id,vehicleType:type,message:'Véhicule sorti'});setWeight(x=>Math.max(0,x-w));},1800)},400)}; const demo=(type:string)=>{if(type==='CAR'||type==='TRUCK')send(`CREATE_VEHICLE ${type}`);else{setScenario(type);apply({type:'SCENARIO_STARTED',message:`Démonstration : ${type}`});if(type==='RACE CONDITION')setWeight(20)}}; return <main><header><div><span className="eyebrow">STR / POSIX LAB</span><h1>Bridge <i>Simulator</i></h1><p>Un laboratoire visuel de concurrence, de priorité et de synchronisation.</p></div><div className="status"><span className="dot"/> BACKEND {ws?.readyState===1?'CONNECTED':'DEMO MODE'}</div></header><section className="toolbar"><button onClick={()=>demo('CAR')}>+ Créer voiture</button><button onClick={()=>demo('TRUCK')} className="orange">+ Créer camion</button><button onClick={()=>send('RESET')} className="quiet">Réinitialiser</button><label>Vitesse <select><option>1x</option><option>0.5x</option><option>2x</option></select></label></section><div className="layout"><section className="scene"><Scene vehicles={vehicles}/><div className="weight"><small>POIDS ACTUEL</small><strong>{weight} <em>/ 15 T</em></strong><div className="bar"><span style={{width:`${Math.min(weight/15*100,100)}%`,background:weight>15?'#eb5757':weight===15?'#f2994a':'#55d98a'}}/></div></div></section><aside><div className="card"><div className="cardtitle">MONITEUR <span className="live">● LIVE</span></div><div className="metrics"><div><b>{vehicles.length}</b><small>THREADS ACTIFS</small></div><div><b>{events.filter(e=>e.type==='VEHICLE_WAITING').length}</b><small>EN ATTENTE</small></div><div><b>OK</b><small>ÉTAT</small></div></div></div><div className="card"><div className="cardtitle">SCÉNARIOS DE CONCURRENCE</div><div className="scenarios">{['NORMAL','RACE CONDITION','FAMINE / STARVATION','DEADLOCK','BUSY WAITING','PRIORITY INVERSION'].map((s,i)=><button className={scenario===s?'selected':''} onClick={()=>demo(s)} key={s}><span>0{i+1}</span>{s}</button>)}</div></div><div className="card queues"><div className="cardtitle">FILES DU MONITEUR</div><p>ARRIVÉE <span>V1 → V2 → C3</span></p><p>PRIORITAIRE <span className="accent">C3 → V1 → V2</span></p></div><div className="card log"><div className="cardtitle">JOURNAL DES ÉVÉNEMENTS</div>{events.slice(0,6).map((e,i)=><p key={i}><time>12:{31-i}:0{i}</time> <b>{e.type}</b> {e.message}</p>)}</div></aside></div></main>}; createRoot(document.getElementById('root')!).render(<App/>);
+import { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BridgeScene, type SceneVehicle } from './components/scene/BridgeScene';
+import './style.css';
+
+type SimulationEvent = {
+  type: string;
+  id?: number;
+  vehicleType?: string;
+  weight?: number;
+  message?: string;
+};
+
+function App() {
+  const [events, setEvents] = useState<SimulationEvent[]>([]);
+  const [weight, setWeight] = useState(0);
+  const [vehicles, setVehicles] = useState<SceneVehicle[]>([]);
+  const [scenario, setScenario] = useState('NORMAL');
+  const [demoId, setDemoId] = useState(1);
+  const [connected, setConnected] = useState(false);
+  const ws = useMemo(() => {
+    try { return new WebSocket('ws://localhost:8080'); }
+    catch { return null; }
+  }, []);
+
+  function updateVehicle(id: number, state: string) {
+    setVehicles(current => current.map(vehicle => vehicle.id === id ? { ...vehicle, state } : vehicle));
+  }
+
+  function applyEvent(event: SimulationEvent) {
+    setEvents(current => [event, ...current].slice(0, 24));
+    if (event.type === 'BRIDGE_WEIGHT_CHANGED') setWeight(event.weight || 0);
+    if (event.type === 'VEHICLE_CREATED') {
+      setVehicles(current => [...current, { id: event.id || 0, vehicleType: event.vehicleType || 'CAR', state: 'ARRIVING' }]);
+    }
+    if (event.id && event.type === 'VEHICLE_WAITING') updateVehicle(event.id, 'WAITING');
+    if (event.id && event.type === 'VEHICLE_ENTERED') updateVehicle(event.id, 'CROSSING');
+    if (event.id && event.type === 'VEHICLE_EXITED') {
+      updateVehicle(event.id, 'EXITING');
+      window.setTimeout(() => setVehicles(current => current.filter(vehicle => vehicle.id !== event.id)), 2600);
+    }
+  }
+
+  useEffect(() => {
+    if (!ws) return;
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => setConnected(false);
+    ws.onmessage = message => {
+      try { applyEvent(JSON.parse(message.data)); }
+      catch { /* Le frontend ignore les messages qui ne sont pas du JSON valide. */ }
+    };
+    return () => ws.close();
+  }, [ws]);
+
+  function send(command: string) {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ command }));
+      return;
+    }
+    const vehicleType = command.includes('TRUCK') ? 'TRUCK' : 'CAR';
+    const id = demoId;
+    const vehicleWeight = vehicleType === 'TRUCK' ? 15 : 5;
+    setDemoId(id + 1);
+    applyEvent({ type: 'VEHICLE_CREATED', id, vehicleType, message: 'Thread créé en mode démo' });
+    window.setTimeout(() => applyEvent({ type: 'VEHICLE_WAITING', id, vehicleType, message: 'En attente devant la barrière' }), 700);
+    window.setTimeout(() => {
+      applyEvent({ type: 'VEHICLE_ENTERED', id, vehicleType, message: 'Véhicule admis' });
+      setWeight(current => Math.min(15, current + vehicleWeight));
+    }, 1500);
+    window.setTimeout(() => {
+      applyEvent({ type: 'VEHICLE_EXITED', id, vehicleType, message: 'Véhicule sorti' });
+      setWeight(current => Math.max(0, current - vehicleWeight));
+    }, 5200);
+  }
+
+  function reset() {
+    setVehicles([]);
+    setWeight(0);
+    setEvents([]);
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ command: 'RESET' }));
+  }
+
+  function selectScenario(name: string) {
+    setScenario(name);
+    applyEvent({ type: 'SCENARIO_STARTED', message: `Scénario : ${name}` });
+    if (name === 'RACE CONDITION') setWeight(20);
+  }
+
+  return (
+    <main>
+      <header>
+        <div><span className="eyebrow">STR / POSIX LAB</span><h1>Bridge <i>Simulator</i></h1><p>Simulateur 3D de concurrence sur un pont à capacité limitée.</p></div>
+        <div className="status"><span className="dot" />{connected ? 'BACKEND CONNECTÉ' : 'MODE DÉMO'}</div>
+      </header>
+      <div className="toolbar">
+        <button onClick={() => send('CREATE_VEHICLE CAR')}>+ Voiture</button>
+        <button className="orange" onClick={() => send('CREATE_VEHICLE TRUCK')}>+ Camion</button>
+        <button className="quiet" onClick={reset}>Réinitialiser</button>
+        <label>Vitesse <select defaultValue="1"><option value="1">1x</option><option value="0.5">0.5x</option><option value="2">2x</option></select></label>
+      </div>
+      <div className="layout">
+        <section className="scene">
+          <BridgeScene vehicles={vehicles} weight={weight} />
+          <div className="weight"><small>POIDS ACTUEL</small><strong>{weight} <em>/ 15 T</em></strong><div className="bar"><span style={{ width: `${Math.min(weight / 15 * 100, 100)}%`, background: weight > 15 ? '#eb5757' : weight === 15 ? '#f2994a' : '#55d98a' }} /></div></div>
+          <div className="direction">ENTRÉE <span>→</span> PONT <span>→</span> SORTIE</div>
+        </section>
+        <aside>
+          <div className="card"><div className="cardtitle">MONITEUR <span className="live">● ACTIF</span></div><div className="metrics"><div><b>{vehicles.length}</b><small>THREADS</small></div><div><b>{vehicles.filter(vehicle => vehicle.state === 'WAITING').length}</b><small>EN ATTENTE</small></div><div><b>OK</b><small>ÉTAT</small></div></div></div>
+          <div className="card"><div className="cardtitle">SCÉNARIOS DE CONCURRENCE</div><div className="scenarios">{['NORMAL', 'RACE CONDITION', 'FAMINE / STARVATION', 'DEADLOCK', 'BUSY WAITING', 'PRIORITY INVERSION'].map((name, index) => <button className={scenario === name ? 'selected' : ''} onClick={() => selectScenario(name)} key={name}><span>0{index + 1}</span>{name}</button>)}</div></div>
+          <div className="card queues"><div className="cardtitle">FILES DU MONITEUR</div><p>ARRIVÉE <span>{vehicles.map(vehicle => `${vehicle.vehicleType === 'TRUCK' ? 'C' : 'V'}${vehicle.id}`).join(' → ') || '—'}</span></p><p>PASSAGE <span className="accent">{vehicles.filter(vehicle => vehicle.state === 'CROSSING').map(vehicle => `${vehicle.vehicleType === 'TRUCK' ? 'C' : 'V'}${vehicle.id}`).join(' → ') || '—'}</span></p></div>
+          <div className="card log"><div className="cardtitle">JOURNAL DES ÉVÉNEMENTS</div>{events.slice(0, 6).map((event, index) => <p key={`${event.type}-${index}`}><time>{new Date().toLocaleTimeString('fr-FR')}</time> <b>{event.type}</b> {event.message}</p>)}</div>
+        </aside>
+      </div>
+    </main>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(<App />);
