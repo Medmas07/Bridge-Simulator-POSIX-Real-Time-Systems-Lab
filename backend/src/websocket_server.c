@@ -2,6 +2,7 @@
 #include "simulation.h"
 
 #include <stdint.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,6 +23,14 @@ typedef int socket_handle;
 #define SOCKET_ERROR (-1)
 #define CLOSE_SOCKET close
 #endif
+
+static void report_socket_error(const char *operation) {
+#ifdef _WIN32
+    fprintf(stderr, "WebSocket: %s echoue (code %d)\n", operation, WSAGetLastError());
+#else
+    fprintf(stderr, "WebSocket: %s echoue (%s)\n", operation, strerror(errno));
+#endif
+}
 
 typedef struct {
     uint32_t state[5];
@@ -237,10 +246,16 @@ static void serve_client(socket_handle client, Simulation *simulation) {
 void websocket_server_run(Simulation *simulation) {
 #ifdef _WIN32
     WSADATA winsock;
-    if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0) return;
+    if (WSAStartup(MAKEWORD(2, 2), &winsock) != 0) {
+        report_socket_error("WSAStartup");
+        return;
+    }
 #endif
     socket_handle server = socket(AF_INET, SOCK_STREAM, 0);
-    if (server == INVALID_SOCKET) return;
+    if (server == INVALID_SOCKET) {
+        report_socket_error("socket");
+        return;
+    }
     int reuse = 1;
     setsockopt(server, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, sizeof(reuse));
     struct sockaddr_in address;
@@ -249,6 +264,7 @@ void websocket_server_run(Simulation *simulation) {
     address.sin_port = htons(8080);
     address.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bind(server, (struct sockaddr *)&address, sizeof(address)) == SOCKET_ERROR || listen(server, 4) == SOCKET_ERROR) {
+        report_socket_error("bind/listen sur le port 8080");
         CLOSE_SOCKET(server);
         return;
     }
