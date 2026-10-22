@@ -2,6 +2,7 @@ export const APPEARANCE_SECONDS = 0.5;
 export const APPROACH_SECONDS = 3;
 export const CROSSING_SECONDS = 7;
 export const EXIT_SECONDS = 2;
+export const WEBSOCKET_URL = 'ws://localhost:8081';
 
 export const SIMULATION_SPEEDS = [0.5, 1, 2] as const;
 export type SimulationSpeed = typeof SIMULATION_SPEEDS[number];

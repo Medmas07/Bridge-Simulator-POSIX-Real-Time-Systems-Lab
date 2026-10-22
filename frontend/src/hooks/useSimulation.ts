@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SceneVehicle } from '../components/scene/BridgeScene';
-import type { ScenarioName, SimulationSpeed } from '../simulationConfig';
+import { WEBSOCKET_URL, type ScenarioName, type SimulationSpeed } from '../simulationConfig';
 
 export type SimulationEvent = {
   type: string;
@@ -176,7 +176,7 @@ export function useSimulation() {
     let mounted = true;
     const connect = () => {
       if (!mounted) return;
-      const socket = new WebSocket('ws://localhost:8080');
+      const socket = new WebSocket(WEBSOCKET_URL);
       socketRef.current = socket;
       socket.onopen = () => setState(current => ({ ...current, connected: true, error: '' }));
       socket.onmessage = message => {

@@ -24,6 +24,8 @@ typedef int socket_handle;
 #define CLOSE_SOCKET close
 #endif
 
+enum { BRIDGE_WEBSOCKET_PORT = 8081 };
+
 static void report_socket_error(const char *operation) {
 #ifdef _WIN32
     fprintf(stderr, "WebSocket: %s echoue (code %d)\n", operation, WSAGetLastError());
@@ -261,14 +263,14 @@ void websocket_server_run(Simulation *simulation) {
     struct sockaddr_in address;
     memset(&address, 0, sizeof(address));
     address.sin_family = AF_INET;
-    address.sin_port = htons(8080);
+    address.sin_port = htons(BRIDGE_WEBSOCKET_PORT);
     address.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bind(server, (struct sockaddr *)&address, sizeof(address)) == SOCKET_ERROR || listen(server, 4) == SOCKET_ERROR) {
-        report_socket_error("bind/listen sur le port 8080");
+        report_socket_error("bind/listen sur le port 8081");
         CLOSE_SOCKET(server);
         return;
     }
-    printf("Bridge Simulator WebSocket: ws://localhost:8080\n");
+    printf("Bridge Simulator WebSocket: ws://localhost:%d\n", BRIDGE_WEBSOCKET_PORT);
     for (;;) {
         socket_handle client = accept(server, NULL, NULL);
         if (client == INVALID_SOCKET) continue;
