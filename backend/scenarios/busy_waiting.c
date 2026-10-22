@@ -60,7 +60,7 @@ void scenario_run_busy_waiting(Simulation *simulation) {
     pthread_join(condition, NULL);
     char fields[384];
     double cpu_ms = 1000.0 * (double)(clock() - start) / CLOCKS_PER_SEC;
-    snprintf(fields, sizeof(fields), "\"checks\":%lu,\"conditionWakeups\":1,\"cpuMs\":%.2f,\"message\":\"La variable de condition ne sonde pas en boucle\"", context.iterations, cpu_ms);
+    snprintf(fields, sizeof(fields), "\"checks\":%lu,\"conditionWakeups\":1,\"cpuMs\":%.2f,\"busyState\":\"RUNNING\",\"conditionState\":\"WAITING\",\"message\":\"L'attente active consomme du temps processeur en verifiant constamment la condition, contrairement a l'attente bloquante qui endort le thread.\"", context.iterations, cpu_ms);
     events_emit(simulation_generation(simulation), "BUSY_WAIT_RESULT", fields);
     pthread_cond_destroy(&context.condition);
     pthread_mutex_destroy(&context.mutex);

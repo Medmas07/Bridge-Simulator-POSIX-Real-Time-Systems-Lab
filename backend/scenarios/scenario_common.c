@@ -38,6 +38,7 @@ void scenario_emit_step(Simulation *simulation, const char *step, const char *po
     char fields[768];
     snprintf(fields, sizeof(fields), "\"step\":\"%s\",\"posixEvent\":\"%s\",\"explanation\":\"%s\"", step, posix_event, explanation);
     events_emit(simulation_generation(simulation), "SCENARIO_STEP", fields);
+    simulation_wait_for_step(simulation);
 }
 
 void scenario_wait_for_vehicles(Simulation *simulation) {

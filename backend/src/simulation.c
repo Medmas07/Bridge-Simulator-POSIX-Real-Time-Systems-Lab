@@ -142,9 +142,9 @@ void simulation_snapshot_json(Simulation *simulation, char *output, size_t outpu
     display_weight = scenario == SCENARIO_RACE_CONDITION ? simulation->demonstration_weight : bridge.weight;
     collapsed = simulation->bridge_collapsed;
     snprintf(output, output_size,
-             "{\"type\":\"SNAPSHOT\",\"generation\":%u,\"scenario\":\"%s\",\"simulationState\":\"%s\",\"speed\":%.1f,\"weight\":%d,\"activeThreads\":%d,\"waitingCars\":%d,\"waitingTrucks\":%d,\"crossingCars\":%d,\"crossingTrucks\":%d,\"collapsed\":%s,\"vehicles\":[",
+             "{\"type\":\"SNAPSHOT\",\"generation\":%u,\"scenario\":\"%s\",\"simulationState\":\"%s\",\"speed\":%.1f,\"stepMode\":%s,\"weight\":%d,\"activeThreads\":%d,\"waitingCars\":%d,\"waitingTrucks\":%d,\"crossingCars\":%d,\"crossingTrucks\":%d,\"collapsed\":%s,\"vehicles\":[",
              generation, scenario_name(scenario), simulation_state_name(state), speed,
-             display_weight, active, bridge.waiting_cars, bridge.waiting_trucks,
+             simulation->step_mode ? "true" : "false", display_weight, active, bridge.waiting_cars, bridge.waiting_trucks,
              bridge.crossing_cars, bridge.crossing_trucks, collapsed ? "true" : "false");
     used = strlen(output);
     for (int i = 0; i < simulation->vehicle_count && used + 120 < output_size; i++) {
@@ -208,6 +208,7 @@ static void stop_current(Simulation *simulation) {
     simulation->state = SIMULATION_STOPPING;
     atomic_store(&simulation->stop_requested, true);
     pthread_cond_broadcast(&simulation->pause_condition);
+    pthread_cond_broadcast(&simulation->step_condition);
     join_controller = simulation->controller_running;
     controller = simulation->controller_thread;
     pthread_mutex_unlock(&simulation->mutex);
@@ -225,6 +226,7 @@ void simulation_init(Simulation *simulation) {
     memset(simulation, 0, sizeof(*simulation));
     pthread_mutex_init(&simulation->mutex, NULL);
     pthread_cond_init(&simulation->pause_condition, NULL);
+    pthread_cond_init(&simulation->step_condition, NULL);
     bridge_init(&simulation->bridge);
     atomic_init(&simulation->stop_requested, false);
     simulation->generation = 1;
@@ -238,6 +240,7 @@ void simulation_destroy(Simulation *simulation) {
     stop_current(simulation);
     bridge_destroy(&simulation->bridge);
     pthread_cond_destroy(&simulation->pause_condition);
+    pthread_cond_destroy(&simulation->step_condition);
     pthread_mutex_destroy(&simulation->mutex);
 }
 
@@ -268,6 +271,7 @@ void simulation_start_scenario(Simulation *simulation, ScenarioKind scenario) {
     simulation->vehicle_count = 0;
     simulation->demonstration_weight = 0;
     simulation->bridge_collapsed = 0;
+    simulation->step_requested = 0;
     atomic_store(&simulation->stop_requested, false);
     pthread_mutex_unlock(&simulation->mutex);
     snprintf(fields, sizeof(fields), "\"scenario\":\"%s\",\"simulationState\":\"RUNNING\",\"message\":\"Nouveau scenario, generation isolee\"", scenario_name(scenario));
@@ -294,6 +298,7 @@ void simulation_reset(Simulation *simulation) {
     simulation->vehicle_count = 0;
     simulation->demonstration_weight = 0;
     simulation->bridge_collapsed = 0;
+    simulation->step_requested = 0;
     atomic_store(&simulation->stop_requested, false);
     pthread_mutex_unlock(&simulation->mutex);
     events_emit(simulation_generation(simulation), "SIMULATION_RESET", "\"weight\":0,\"message\":\"Threads joints, moniteur et files reinitialises\"");
@@ -325,4 +330,38 @@ void simulation_set_speed(Simulation *simulation, double speed) {
     pthread_mutex_unlock(&simulation->mutex);
     snprintf(fields, sizeof(fields), "\"speed\":%.1f", speed);
     events_emit(simulation_generation(simulation), "SPEED_CHANGED", fields);
+}
+
+void simulation_set_step_mode(Simulation *simulation, int enabled) {
+    unsigned generation;
+    pthread_mutex_lock(&simulation->mutex);
+    simulation->step_mode = enabled != 0;
+    simulation->step_requested = 0;
+    generation = simulation->generation;
+    pthread_cond_broadcast(&simulation->step_condition);
+    pthread_mutex_unlock(&simulation->mutex);
+    events_emit(generation, "STEP_MODE_CHANGED", simulation->step_mode ? "\"stepMode\":true" : "\"stepMode\":false");
+}
+
+void simulation_step(Simulation *simulation) {
+    unsigned generation = 0;
+    int accepted = 0;
+    pthread_mutex_lock(&simulation->mutex);
+    if (simulation->step_mode && !atomic_load(&simulation->stop_requested)) {
+        simulation->step_requested = 1;
+        generation = simulation->generation;
+        accepted = 1;
+        pthread_cond_signal(&simulation->step_condition);
+    }
+    pthread_mutex_unlock(&simulation->mutex);
+    if (accepted) events_emit(generation, "STEP_GRANTED", "\"message\":\"Une seule etape backend est autorisee\"");
+}
+
+void simulation_wait_for_step(Simulation *simulation) {
+    pthread_mutex_lock(&simulation->mutex);
+    while (simulation->step_mode && !simulation->step_requested && !atomic_load(&simulation->stop_requested)) {
+        pthread_cond_wait(&simulation->step_condition, &simulation->mutex);
+    }
+    if (simulation->step_mode) simulation->step_requested = 0;
+    pthread_mutex_unlock(&simulation->mutex);
 }

@@ -17,10 +17,10 @@ static void *priority_low(void *argument) {
     PriorityContext *context = argument;
     simulation_thread_started(context->simulation);
     pthread_mutex_lock(&context->resource);
-    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T1_LOW\",\"action\":\"LOCKED_MUTEX\"");
+    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T1_LOW\",\"threadId\":\"T1\",\"priority\":\"LOW\",\"threadState\":\"HOLDING_MUTEX\",\"holds\":\"resource\",\"action\":\"LOCKED_MUTEX\"");
     simulation_wait_ms(context->simulation, 2600);
     pthread_mutex_unlock(&context->resource);
-    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T1_LOW\",\"action\":\"RELEASED_MUTEX\"");
+    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T1_LOW\",\"threadId\":\"T1\",\"priority\":\"LOW\",\"threadState\":\"READY\",\"action\":\"RELEASED_MUTEX\"");
     simulation_thread_finished(context->simulation);
     return NULL;
 }
@@ -29,10 +29,10 @@ static void *priority_high(void *argument) {
     PriorityContext *context = argument;
     simulation_thread_started(context->simulation);
     simulation_wait_ms(context->simulation, 350);
-    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T3_HIGH\",\"action\":\"WAITING_MUTEX\"");
+    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T3_HIGH\",\"threadId\":\"T3\",\"priority\":\"HIGH\",\"threadState\":\"BLOCKED\",\"waitsFor\":\"resource\",\"action\":\"WAITING_MUTEX\"");
     pthread_mutex_lock(&context->resource);
     pthread_mutex_unlock(&context->resource);
-    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T3_HIGH\",\"action\":\"ACQUIRED_MUTEX\"");
+    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T3_HIGH\",\"threadId\":\"T3\",\"priority\":\"HIGH\",\"threadState\":\"RUNNING\",\"action\":\"ACQUIRED_MUTEX\"");
     simulation_thread_finished(context->simulation);
     return NULL;
 }
@@ -41,7 +41,7 @@ static void *priority_medium(void *argument) {
     PriorityContext *context = argument;
     simulation_thread_started(context->simulation);
     simulation_wait_ms(context->simulation, 550);
-    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T2_MEDIUM\",\"action\":\"RUNNING_CPU_WORK\"");
+    events_emit(simulation_generation(context->simulation), "PRIORITY_EVENT", "\"task\":\"T2_MEDIUM\",\"threadId\":\"T2\",\"priority\":\"MEDIUM\",\"threadState\":\"RUNNING\",\"action\":\"RUNNING_CPU_WORK\"");
     simulation_wait_ms(context->simulation, 1500);
     simulation_thread_finished(context->simulation);
     return NULL;

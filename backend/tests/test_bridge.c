@@ -117,10 +117,28 @@ static void test_reset_joins_threads_and_changes_generation(void) {
     events_destroy();
 }
 
+static void *wait_for_step_thread(void *argument) {
+    simulation_wait_for_step(argument);
+    return NULL;
+}
+
+static void test_backend_step_mode(void) {
+    Simulation simulation;
+    pthread_t thread;
+    simulation_init(&simulation);
+    simulation_set_step_mode(&simulation, 1);
+    assert(pthread_create(&thread, NULL, wait_for_step_thread, &simulation) == 0);
+    simulation_step(&simulation);
+    pthread_join(thread, NULL);
+    simulation_set_step_mode(&simulation, 0);
+    simulation_destroy(&simulation);
+}
+
 int main(void) {
     test_three_cars_and_zero_after_release();
     test_truck_priority();
     test_reset_joins_threads_and_changes_generation();
+    test_backend_step_mode();
     puts("bridge monitor and lifecycle: ok");
     return 0;
 }

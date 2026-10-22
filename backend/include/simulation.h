@@ -53,6 +53,9 @@ typedef struct Simulation {
     int vehicle_count;
     int demonstration_weight;
     int bridge_collapsed;
+    int step_mode;
+    int step_requested;
+    pthread_cond_t step_condition;
 } Simulation;
 
 void simulation_init(Simulation *simulation);
@@ -63,6 +66,9 @@ void simulation_reset(Simulation *simulation);
 void simulation_pause(Simulation *simulation);
 void simulation_resume(Simulation *simulation);
 void simulation_set_speed(Simulation *simulation, double speed);
+void simulation_set_step_mode(Simulation *simulation, int enabled);
+void simulation_step(Simulation *simulation);
+void simulation_wait_for_step(Simulation *simulation);
 int simulation_wait_ms(Simulation *simulation, int logical_ms);
 int simulation_checkpoint(Simulation *simulation);
 void simulation_snapshot_json(Simulation *simulation, char *output, size_t output_size);

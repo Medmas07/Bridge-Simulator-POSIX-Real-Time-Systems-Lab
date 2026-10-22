@@ -219,7 +219,9 @@ static void handle_command(Simulation *simulation, const char *command) {
         if (strstr(command, "0.5")) simulation_set_speed(simulation, 0.5);
         else if (strstr(command, "2")) simulation_set_speed(simulation, 2.0);
         else simulation_set_speed(simulation, 1.0);
-    }
+    } else if (strstr(command, "SET_STEP_MODE")) {
+        simulation_set_step_mode(simulation, strstr(command, "true") || strstr(command, "TRUE"));
+    } else if (strstr(command, "STEP")) simulation_step(simulation);
 }
 
 static void serve_client(socket_handle client, Simulation *simulation) {

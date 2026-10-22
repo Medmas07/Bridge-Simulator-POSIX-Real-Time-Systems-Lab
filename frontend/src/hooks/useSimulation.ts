@@ -12,6 +12,7 @@ export type SimulationEvent = {
   scenario?: ScenarioName;
   simulationState?: SimulationStatus;
   speed?: SimulationSpeed;
+  stepMode?: boolean;
   weight?: number;
   activeThreads?: number;
   waitingCars?: number;
@@ -26,10 +27,24 @@ export type SimulationEvent = {
   vehicles?: Array<{ id: number; vehicleType: string; vehicleState: string }>;
   checks?: number;
   cpuMs?: number;
+  observedWeight?: number;
   trucksServed?: number;
   cycle?: string;
   task?: string;
   action?: string;
+  thread?: string;
+  threadId?: string;
+  threadState?: string;
+  holds?: string;
+  owns?: string;
+  waitsFor?: string;
+  priority?: string;
+  busyState?: string;
+  conditionState?: string;
+  conditionWakeups?: number;
+  waitingVehicleId?: number;
+  waitingMs?: number;
+  risk?: boolean;
   variant?: string;
   inheritanceApplied?: boolean;
   collapsed?: boolean;
@@ -43,6 +58,7 @@ export type SimulationViewState = {
   scenario: ScenarioName;
   simulationState: SimulationStatus;
   speed: SimulationSpeed;
+  stepMode: boolean;
   weight: number;
   activeThreads: number;
   waitingCars: number;
@@ -64,6 +80,7 @@ const initialState: SimulationViewState = {
   scenario: 'NORMAL',
   simulationState: 'IDLE',
   speed: 1,
+  stepMode: false,
   weight: 0,
   activeThreads: 0,
   waitingCars: 0,
@@ -103,6 +120,7 @@ function applyEvent(current: SimulationViewState, event: SimulationEvent): Simul
       scenario: event.scenario || next.scenario,
       simulationState: event.simulationState || next.simulationState,
       speed: event.speed || next.speed,
+      stepMode: event.stepMode ?? next.stepMode,
       weight: event.weight ?? 0,
       activeThreads: event.activeThreads ?? 0,
       waitingCars: event.waitingCars ?? 0,
@@ -142,6 +160,7 @@ function applyEvent(current: SimulationViewState, event: SimulationEvent): Simul
   if (event.type === 'THREAD_COUNT_CHANGED') next.activeThreads = event.activeThreads ?? next.activeThreads;
   if (event.type === 'SIMULATION_STATE_CHANGED') next.simulationState = event.simulationState || next.simulationState;
   if (event.type === 'SPEED_CHANGED') next.speed = event.speed || next.speed;
+  if (event.type === 'STEP_MODE_CHANGED') next.stepMode = event.stepMode ?? next.stepMode;
   if (event.type === 'MONITOR_EVENT') next.monitorState = event.monitorState || next.monitorState;
   if (event.type === 'SCENARIO_STEP') {
     next.currentStep = event.step || next.currentStep;
@@ -225,5 +244,7 @@ export function useSimulation() {
     pause: () => send({ command: 'PAUSE' }),
     resume: () => send({ command: 'RESUME' }),
     setSpeed: (speed: SimulationSpeed) => send({ command: 'SET_SPEED', speed }),
+    setStepMode: (enabled: boolean) => send({ command: 'SET_STEP_MODE', enabled }),
+    step: () => send({ command: 'STEP' }),
   };
 }

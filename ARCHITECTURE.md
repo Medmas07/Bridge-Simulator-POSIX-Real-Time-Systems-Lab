@@ -15,3 +15,5 @@ Les six scénarios sont lancés par le backend : normal utilise le moniteur; rac
 Le moniteur du pont reste isolé dans `src/bridge.c`. Les véhicules sont créés et joints dans `src/vehicle.c`, tandis que `src/websocket_server.c` ne fait que traduire les commandes réseau et diffuser les événements. Cette séparation permet de présenter chaque responsabilité indépendamment pendant la validation.
 
 Chaque événement porte une génération de simulation. Lors d'un reset ou d'un changement de scénario, les événements d'une ancienne génération sont donc ignorés par le frontend; cela évite d'afficher un état ancien après un redémarrage.
+
+Le mode pas-à-pas est piloté par `step_condition` dans le backend. `SCENARIO_STEP` est émis par le scénario, puis le thread contrôleur attend une autorisation `STEP`; le bouton frontend ne fabrique donc pas la progression. Les panneaux `THREAD INSPECTOR`, `RESOURCE GRAPH`, `WAITING COMPARISON`, `STARVATION MONITOR` et `PRIORITY TIMELINE` affichent uniquement les données contenues dans les événements instrumentés.
